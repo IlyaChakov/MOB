@@ -58,6 +58,8 @@ build_iot_from_A <- function(x, A, sectors = NULL, tol = 1e-8) {
     warning("Баланс не выполняется в пределах tol.")
   }
 
+  rownames(A) <- sectors
+  colnames(A) <- sectors
   rownames(Z) <- sectors
   colnames(Z) <- sectors
   names(x) <- sectors
@@ -209,5 +211,94 @@ solve_iot_case <- function(case, tol = 1e-8) {
       tol = tol
     ),
     stop("Неизвестный тип сценария. Используйте: 'x_A', 'x_Z', 'A_y'.")
+  )
+}
+
+prepare_iot_case <- function(ACTIVE_CASE, sectors, x = NULL, A = NULL, Z = NULL, y = NULL) {
+  if (!ACTIVE_CASE %in% c("x_A", "x_Z", "A_y")) {
+    stop("ACTIVE_CASE должен быть одним из значений: 'x_A', 'x_Z', 'A_y'.")
+  }
+
+  if (ACTIVE_CASE == "x_A") {
+    if (is.null(x) || is.null(A)) {
+      stop("Для сценария 'x_A' необходимо задать x и A.")
+    }
+
+    return(list(
+      type = "x_A",
+      sectors = sectors,
+      x = x,
+      A = A
+    ))
+  }
+
+  if (ACTIVE_CASE == "x_Z") {
+    if (is.null(x) || is.null(Z)) {
+      stop("Для сценария 'x_Z' необходимо задать x и Z.")
+    }
+
+    return(list(
+      type = "x_Z",
+      sectors = sectors,
+      x = x,
+      Z = Z
+    ))
+  }
+
+  if (is.null(A) || is.null(y)) {
+    stop("Для сценария 'A_y' необходимо задать A и y.")
+  }
+
+  list(
+    type = "A_y",
+    sectors = sectors,
+    y = y,
+    A = A
+  )
+}
+
+investment_impact <- function(iot, sector, investment) {
+  sectors <- iot$sectors
+
+  if (is.character(sector)) {
+    sector_index <- match(sector, sectors)
+    if (is.na(sector_index)) {
+      stop("Указанная отрасль не найдена в sectors.")
+    }
+  } else {
+    sector_index <- as.integer(sector)
+    if (is.na(sector_index) || sector_index < 1 || sector_index > length(sectors)) {
+      stop("Индекс отрасли выходит за допустимые пределы.")
+    }
+  }
+
+  investment <- as.numeric(investment)
+  if (length(investment) != 1 || is.na(investment)) {
+    stop("investment должен быть одним числом.")
+  }
+
+  delta_y <- rep(0, length(sectors))
+  delta_y[sector_index] <- investment
+
+  names(delta_y) <- sectors
+  delta_x <- output_from_final_demand(iot$A, delta_y)
+  names(delta_x) <- sectors
+
+  stimulated_y <- iot$y + delta_y
+  stimulated_x <- iot$x + delta_x
+  stimulated_iot <- build_iot_from_A(
+    x = stimulated_x,
+    A = iot$A,
+    sectors = sectors
+  )
+
+  list(
+    sector_index = sector_index,
+    sector_name = sectors[sector_index],
+    investment = investment,
+    delta_y = delta_y,
+    delta_x = delta_x,
+    stimulated_iot = stimulated_iot,
+    output_multiplier = sum(delta_x) / investment
   )
 }
